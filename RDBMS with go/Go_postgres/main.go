@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -37,9 +38,18 @@ func main() {
 		log.Fatal(pingErr)
 	}
 
+	ctx := context.Background()
+	actorId, err := AddActorIfNotExists(ctx, "Jennifer", "Lawrence")
+
+	fmt.Printf("actor added : %v\n", actorId)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println("Connected !")
 
-	actorId, err := addActor("Jennifer", "Lawrence")
+	actorId, err = addActor("Jennifer", "Lawrence")
 
 	if err != nil {
 		log.Fatal(err)
@@ -149,5 +159,45 @@ func deleteActor(id int64) (int64, error) {
 	}
 
 	return rowAffect, nil
+
+}
+
+func AddActorIfNotExists(ctx context.Context, firstName, lastName string) (int64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+
+	if err != nil {
+		return 0, fmt.Errorf("AddActorIfNotExists : %v", err)
+	}
+
+	var id int64
+
+	defer tx.Rollback()
+
+	err = tx.QueryRowContext(ctx, "SELECT actor_id FROM actor WHERE first_name = $1 AND last_name = $2", firstName, lastName).Scan(&id)
+
+	if err != nil {
+		return 0, fmt.Errorf("AddActorIfNotExists : %v", err)
+	}
+
+	if id > 0 {
+		fmt.Printf("Actor already exists in database with id : %v\n", id)
+		fmt.Println("Rolling back ")
+		tx.Rollback()
+		return id, nil
+	}
+
+	err = tx.QueryRowContext(ctx, "INSERT INTO actor (first_name , last_name) VALUES ( $1 , $2) RETURNING actor_id", firstName, lastName).Scan(&id)
+
+	if err != nil {
+		return 0, fmt.Errorf("AddActorIfNotExists : %v", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, fmt.Errorf("AddActorIfNotExists : %v", err)
+	} else {
+		fmt.Println("Transaction committed")
+	}
+
+	return id, nil
 
 }
