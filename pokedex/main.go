@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/P-H-Pancholi/Golang-Projects/pokedex/pokecache"
 	"github.com/P-H-Pancholi/Golang-Projects/pokedex/pokemap"
 )
 
 type Config struct {
 	next string
 	prev string
+	c    pokecache.Cache
 }
 
 type commandcli struct {
@@ -26,9 +29,11 @@ var config Config
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	commandMap = make(map[string]commandcli)
+	c := pokecache.NewCache(5 * time.Second)
 	config = Config{
 		next: "https://pokeapi.co/api/v2/location-area/",
 		prev: "",
+		c:    c,
 	}
 	commandMap["exit"] = commandcli{
 		name:        "exit",
@@ -79,7 +84,7 @@ func commandHelp(c *Config) error {
 	return nil
 }
 func GetMap(c *Config) error {
-	next, prev := pokemap.GetLocArea(c.next)
+	next, prev := pokemap.GetLocArea(c.next, c.c)
 	c.next = next
 	c.prev = prev
 	return nil
@@ -90,7 +95,7 @@ func GetMapb(c *Config) error {
 		fmt.Println("you're on the first page")
 		return nil
 	}
-	next, prev := pokemap.GetLocArea(c.prev)
+	next, prev := pokemap.GetLocArea(c.prev, c.c)
 	c.next = next
 	c.prev = prev
 	return nil

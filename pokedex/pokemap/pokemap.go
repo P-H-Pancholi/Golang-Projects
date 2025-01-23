@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+
+	"github.com/P-H-Pancholi/Golang-Projects/pokedex/pokecache"
 )
 
 type LocAreaStruct struct {
@@ -18,19 +20,25 @@ type LocAreaStruct struct {
 	} `json:"results"`
 }
 
-func GetLocArea(url string) (next string, prev string) {
-	res, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
+func GetLocArea(url string, c pokecache.Cache) (next string, prev string) {
+	var body []byte
+	body, ok := c.Get(url)
+	if !ok {
+		res, err := http.Get(url)
+		if err != nil {
+			log.Fatal(err)
+		}
+		body, err = io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode > 299 {
+			log.Fatalf("Response failed with status code: %d and\nbody: %s\n", res.StatusCode, body)
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.Add(url, body)
 	}
-	body, err := io.ReadAll(res.Body)
-	res.Body.Close()
-	if res.StatusCode > 299 {
-		log.Fatalf("Response failed with status code: %d and\nbody: %s\n", res.StatusCode, body)
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
+
 	locArea := LocAreaStruct{}
 	if err := json.Unmarshal(body, &locArea); err != nil {
 		log.Fatal(err)
