@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -13,9 +12,10 @@ import (
 )
 
 type Config struct {
-	next string
-	prev string
-	c    pokecache.Cache
+	next          string
+	prev          string
+	c             pokecache.Cache
+	pokemonCaught map[string]pokemap.Pokemon
 }
 
 type commandcli struct {
@@ -32,9 +32,10 @@ func main() {
 	commandMap = make(map[string]commandcli)
 	c := pokecache.NewCache(5 * time.Second)
 	config = Config{
-		next: "https://pokeapi.co/api/v2/location-area/",
-		prev: "",
-		c:    c,
+		next:          "https://pokeapi.co/api/v2/location-area/",
+		prev:          "",
+		c:             c,
+		pokemonCaught: make(map[string]pokemap.Pokemon),
 	}
 	commandMap["exit"] = commandcli{
 		name:        "exit",
@@ -61,6 +62,11 @@ func main() {
 		description: "Explores pokemon in area provided",
 		callbackfn:  Explore,
 	}
+	commandMap["catch"] = commandcli{
+		name:        "catch",
+		description: "catch specified pokemon ",
+		callbackfn:  Catch,
+	}
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
@@ -68,17 +74,15 @@ func main() {
 		// fmt.Printf("Your command was: %s\n", CleanInput(text)[0])
 		command := CleanInput(text)
 		v, ok := commandMap[command[0]]
-		pokemonArea := ""
-		if v.name == "explore" {
-			if len(command) < 2 {
-				log.Fatal("Please provide area name for explore")
-			}
-			pokemonArea = command[1]
-		}
 		if !ok {
 			fmt.Println("Unknown command")
 		} else {
-			v.callbackfn(&config, pokemonArea)
+			if len(command) > 1 {
+				v.callbackfn(&config, command[1])
+			} else {
+				v.callbackfn(&config, "")
+			}
+
 		}
 	}
 }
@@ -122,5 +126,15 @@ func CleanInput(text string) []string {
 
 func Explore(c *Config, s string) error {
 	pokemap.ExploreArea(s, c.c)
+	return nil
+}
+
+func Catch(c *Config, s string) error {
+	fmt.Printf("Throwing a Pokeball at %s...\n", s)
+	if pokemap.CatchPoke(s, c.pokemonCaught) {
+		fmt.Printf("%s was caught!\n", s)
+	} else {
+		fmt.Printf("%s escaped!\n", s)
+	}
 	return nil
 }
