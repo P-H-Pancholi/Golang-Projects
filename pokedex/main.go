@@ -67,6 +67,16 @@ func main() {
 		description: "catch specified pokemon ",
 		callbackfn:  Catch,
 	}
+	commandMap["inspect"] = commandcli{
+		name:        "inspect",
+		description: "It takes the name of a Pokemon and prints the name, height, weight, stats and type(s) of the Pokemon",
+		callbackfn:  Inspect,
+	}
+	commandMap["pokedex"] = commandcli{
+		name:        "pokedex",
+		description: " It takes no arguments but prints a list of all the names of the Pokemon the user has caught.",
+		callbackfn:  PrintPokemon,
+	}
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
@@ -135,6 +145,31 @@ func Catch(c *Config, s string) error {
 		fmt.Printf("%s was caught!\n", s)
 	} else {
 		fmt.Printf("%s escaped!\n", s)
+	}
+	return nil
+}
+
+func Inspect(c *Config, s string) error {
+	v, ok := c.pokemonCaught[s]
+	if !ok {
+		fmt.Println("you have not caught that pokemon")
+	} else {
+		fmt.Printf("Name: %s\nHeight: %d\nWeight: %d\nStats: \n", v.Name, v.Height, v.Weight)
+		for _, val := range v.Stats {
+			fmt.Printf("  -%s: %d\n", val.Stat.Name, val.BaseStat)
+		}
+		fmt.Println("Types:")
+		for _, val := range v.Types {
+			fmt.Printf("  - %s\n", val.Type.Name)
+		}
+	}
+	return nil
+}
+
+func PrintPokemon(c *Config, s string) error {
+	fmt.Println("Your Pokedex:")
+	for key := range c.pokemonCaught {
+		fmt.Printf("  - %s\n", key)
 	}
 	return nil
 }
