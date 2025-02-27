@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"fmt"
+	"html"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -40,6 +44,56 @@ func (c *commands) run(s *state, cmd command) error {
 		return err
 	}
 	return nil
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "gator")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	rss := RSSFeed{}
+
+	if err := xml.Unmarshal(body, &rss); err != nil {
+		return nil, err
+	}
+
+	rss.Channel.Title = html.UnescapeString(rss.Channel.Title)
+	rss.Channel.Description = html.UnescapeString(rss.Channel.Description)
+	for _, item := range rss.Channel.Item {
+		item.Title = html.UnescapeString(item.Title)
+		item.Description = html.UnescapeString(item.Description)
+	}
+	return &rss, nil
 }
 
 func handlerLogin(s *state, cmd command) error {
@@ -86,6 +140,38 @@ func handlerRegister(s *state, cmd command) error {
 	return nil
 }
 
+func handlerReset(s *state, cmd command) error {
+	if err := s.db.DeleteAllUser(context.Background()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func handlerUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, user := range users {
+		if user == s.c.User {
+			fmt.Printf("%s (current)\n", user)
+		} else {
+			fmt.Println(user)
+		}
+	}
+	return nil
+}
+
+func handlerAgg(s *state, cmd command) error {
+	feedURL := "https://www.wagslane.dev/index.xml"
+	rss, err := fetchFeed(context.Background(), feedURL)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("RSSFeed: %+v\n", *rss)
+	return nil
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -103,7 +189,10 @@ func main() {
 	}
 	comm.register("login", handlerLogin)
 	comm.register("register", handlerRegister)
-	if len(os.Args) < 3 {
+	comm.register("reset", handlerReset)
+	comm.register("users", handlerUsers)
+	comm.register("agg", handlerAgg)
+	if len(os.Args) < 2 {
 		fmt.Println("Expected more than 1 args")
 		os.Exit(1)
 	}
