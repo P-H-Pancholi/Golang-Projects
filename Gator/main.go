@@ -172,6 +172,126 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
+func handlerAddFeed(s *state, cmd command, currUser database.User) error {
+	if len(cmd.args) < 2 {
+		return fmt.Errorf("expected 2 args for add feed command")
+	}
+
+	// currUser, err := s.db.GetUser(context.Background(), s.c.User)
+	// if err != nil {
+	// 	return err
+	// }
+	feed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      cmd.args[0],
+		Url:       cmd.args[1],
+		UserID:    currUser.ID,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    currUser.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("New feed created for user " + s.c.User)
+	fmt.Printf("%+v\n", feed)
+	return nil
+}
+
+func handlerGetFeeds(s *state, cmd command) error {
+	feeds, err := s.db.GetAllFeeds(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, feed := range feeds {
+		user, err := s.db.GetUserById(context.Background(), feed.UserID)
+		if err != nil {
+			return err
+		}
+		fmt.Println("--------------------------------------")
+		fmt.Printf("id: %d\ncreated_at: %s\nupdates_at: %s\nname: %s\nurl: %s\nuser: %s\n", feed.ID, feed.CreatedAt.Format(time.UnixDate), feed.UpdatedAt.Format(time.UnixDate), feed.Name, feed.Url, user)
+	}
+	return nil
+}
+
+func handlerFollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("provide url of the feed")
+	}
+
+	feed, err := s.db.GetFeedByURL(context.Background(), cmd.args[0])
+	if err != nil {
+		return err
+	}
+	// user, err := s.db.GetUser(context.Background(), s.c.User)
+	// if err != nil {
+	// 	return err
+	// }
+	feedFollow, err := s.db.CreateFeedFollow(
+		context.Background(),
+		database.CreateFeedFollowParams{
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			UserID:    user.ID,
+			FeedID:    feed.ID,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s subscribed to feed %s\n", user.Name, feedFollow.FeedName)
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command, user database.User) error {
+	// user, err := s.db.GetUser(context.Background(), s.c.User)
+	// if err != nil {
+	// 	return err
+	// }
+	feeds, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
+	if err != nil {
+		return err
+	}
+	for _, feed := range feeds {
+		fmt.Println(feed)
+	}
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("provide url to unfollow")
+	}
+	feed, err := s.db.GetFeedByURL(context.Background(), cmd.args[0])
+	if err != nil {
+		return err
+	}
+	if err := s.db.DeleteFeedFollows(context.Background(), database.DeleteFeedFollowsParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+	return func(s *state, c command) error {
+		user, err := s.db.GetUser(context.Background(), s.c.User)
+		if err != nil {
+			return err
+		}
+		return handler(s, c, user)
+	}
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -192,6 +312,11 @@ func main() {
 	comm.register("reset", handlerReset)
 	comm.register("users", handlerUsers)
 	comm.register("agg", handlerAgg)
+	comm.register("addfeed", middlewareLoggedIn(handlerAddFeed))
+	comm.register("feeds", handlerGetFeeds)
+	comm.register("follow", middlewareLoggedIn(handlerFollow))
+	comm.register("following", middlewareLoggedIn(handlerFollowing))
+	comm.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 	if len(os.Args) < 2 {
 		fmt.Println("Expected more than 1 args")
 		os.Exit(1)
