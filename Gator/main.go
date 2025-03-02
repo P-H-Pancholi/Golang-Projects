@@ -163,13 +163,22 @@ func handlerUsers(s *state, cmd command) error {
 }
 
 func handlerAgg(s *state, cmd command) error {
-	feedURL := "https://www.wagslane.dev/index.xml"
-	rss, err := fetchFeed(context.Background(), feedURL)
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("provide time argument for time between requests")
+	}
+	timeBetweenRequests, err := time.ParseDuration(cmd.args[0])
 	if err != nil {
 		return err
 	}
-	fmt.Printf("RSSFeed: %+v\n", *rss)
-	return nil
+	fmt.Println("collecting feeds every " + timeBetweenRequests.String())
+	ticker := time.NewTicker(timeBetweenRequests)
+	defer ticker.Stop()
+	for ; ; <-ticker.C {
+		if err := scrapeFeeds(s); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	}
 }
 
 func handlerAddFeed(s *state, cmd command, currUser database.User) error {
@@ -290,6 +299,26 @@ func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) 
 		}
 		return handler(s, c, user)
 	}
+}
+
+func scrapeFeeds(s *state) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return err
+	}
+	if err := s.db.MarkFeedFetched(context.Background(), feed.ID); err != nil {
+		return err
+	}
+	rss, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return err
+	}
+	fmt.Println("--------------------------------")
+	fmt.Printf("%d. %s\n\n", feed.ID, rss.Channel.Title)
+	for _, item := range rss.Channel.Item {
+		fmt.Println(item.Title)
+	}
+	return nil
 }
 
 func main() {
