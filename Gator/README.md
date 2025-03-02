@@ -17,6 +17,7 @@
 
 ```
 Please add the database url of postgres in dburl section
+you can now use gator command in your command line
 
 ## Using gator
 
